@@ -1,0 +1,6 @@
+.idea/*
+/ridge_detector/__pycache__/
+
+/*.egg*/
+/build/
+/dist/

@@ -1,0 +1,55 @@
+# Multi-Scale Ridge Detector
+
+## Overview
+
+This repository contains the Python implementation of a multi-scale ridge detector designed to identify and localize curvilinear structures in various fields including medical imaging and remote sensing. For more detailed information, please refer to the following literature:
+
+[1] Steger, Carsten. "An unbiased detector of curvilinear structures." IEEE Transactions on Pattern Analysis and Machine Intelligence, 20(2), pp. 113-125, 1998.
+
+[2] Lindeberg, Tony. "Edge detection and ridge detection with automatic scale selection." International Journal of Computer Vision, 30, pp. 117-156, 1998.
+
+[3] Sato, Yoshinobu, et. al. "Three-dimensional multi-scale line filter for segmentation and visualization of curvilinear structures in medical images." Medical Image Analysis, 2(2), pp. 143-168, 1998.
+
+## Installation
+
+### Prerequisites
+
+- Python 3.8 or higher
+- Opencv & scikit-image
+
+
+### Install via pip:
+   ```bash
+   pip install ridge-detector
+   ```
+
+### Usage:
+```python
+from ridge_detector import RidgeDetector
+det = RidgeDetector(line_width=[1, 2, 3],  # Line widths to detect
+                    low_contrast=100,  # Lower bound of intensity contrast, decrease this value if ridges are missed out
+                    high_contrast=200,  # Higher bound of intensity contrast, decrease this value if ridges are missed out
+                    min_len=10, # Ignore ridges shorter than this length
+                    max_len=0, # Ignore ridges longer than this length, set to 0 for no limit
+                    dark_line=True, # Set to True if detecting black ridges in white background, False otherwise
+                    estimate_width=True, # Estimate width for each detected ridge point
+                    extend_line=True, # Tend to preserve ridges near junctions if set to True
+                    correct_pos=False,  # Correct ridge positions with asymmetric widths if set to True
+                    )
+det.detect_lines("path_to_image_or_image_data_in_numpy_array")
+det.show_results()
+det.save_results("directory_to_store_results")  # Comment out if you want to save the detection results
+```
+
+### Demonstrations
+
+| Original                                                    | Ridges & Widths                                                              | Binary Ridges                                                                | Binary Widths                                                              |
+|-------------------------------------------------------------|------------------------------------------------------------------------------|------------------------------------------------------------------------------|----------------------------------------------------------------------------|
+| <img src="./data/images/img0.jpg" width="300" height="300"> | <img src="./data/results/img0_contours_widths.png" width="300" height="300"> | <img src="./data/results/img0_binary_contours.png" width="300" height="300"> | <img src="./data/results/img0_binary_widths.png" width="300" height="300"> |
+| <img src="./data/images/img1.jpg" width="300" height="300"> | <img src="./data/results/img1_contours_widths.png" width="300" height="300"> | <img src="./data/results/img1_binary_contours.png" width="300" height="300"> | <img src="./data/results/img1_binary_widths.png" width="300" height="300"> |
+| <img src="./data/images/img2.jpg" width="300" height="300"> | <img src="./data/results/img2_contours_widths.png" width="300" height="300"> | <img src="./data/results/img2_binary_contours.png" width="300" height="300"> | <img src="./data/results/img2_binary_widths.png" width="300" height="300"> |
+| <img src="./data/images/img3.jpg" width="300" height="300"> | <img src="./data/results/img3_contours_widths.png" width="300" height="300"> | <img src="./data/results/img3_binary_contours.png" width="300" height="300"> | <img src="./data/results/img3_binary_widths.png" width="300" height="300"> |
+| <img src="./data/images/img4.jpg" width="300" height="300"> | <img src="./data/results/img4_contours_widths.png" width="300" height="300"> | <img src="./data/results/img4_binary_contours.png" width="300" height="300"> | <img src="./data/results/img4_binary_widths.png" width="300" height="300"> |
+| <img src="./data/images/img5.png" width="300" height="300"> | <img src="./data/results/img5_contours_widths.png" width="300" height="300"> | <img src="./data/results/img5_binary_contours.png" width="300" height="300"> | <img src="./data/results/img5_binary_widths.png" width="300" height="300"> |
+| <img src="./data/images/img6.jpg" width="300" height="300"> | <img src="./data/results/img6_contours_widths.png" width="300" height="300"> | <img src="./data/results/img6_binary_contours.png" width="300" height="300"> | <img src="./data/results/img6_binary_widths.png" width="300" height="300"> |
+| <img src="./data/images/img7.png" width="300" height="300"> | <img src="./data/results/img7_contours_widths.png" width="300" height="300"> | <img src="./data/results/img7_binary_contours.png" width="300" height="300"> | <img src="./data/results/img7_binary_widths.png" width="300" height="300"> |
