@@ -10,6 +10,9 @@ This repository contains the Python implementation of a multi-scale ridge detect
 
 [3] Sato, Yoshinobu, et. al. "Three-dimensional multi-scale line filter for segmentation and visualization of curvilinear structures in medical images." Medical Image Analysis, 2(2), pp. 143-168, 1998.
 
+
+This Python implementation offers a multi-scale adaptation of the ImageJ ridge detection [plugin](https://imagej.net/Ridge_Detection). It is more accuracy than the ImageJ plugin and faster than another Python [ridge-detection](https://pypi.org/project/ridge-detection/) package. 
+
 ## Installation
 
 ### Prerequisites
