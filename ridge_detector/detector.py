@@ -2,10 +2,10 @@ import os
 import cv2
 import imageio.v3 as iio
 import skimage as ski
-from .constants import *
+from ridge_detector.constants import *
 import matplotlib.pyplot as plt
 from scipy.ndimage import convolve
-from .utils import (LinesUtil, Junction, Crossref, Line, convolve_gauss,
+from ridge_detector.utils import (LinesUtil, Junction, Crossref, Line, convolve_gauss,
                    bresenham, fix_locations, interpolate_gradient_test,
                    closest_point, normalize_to_half_circle)
 
@@ -921,20 +921,22 @@ class RidgeDetector:
 
 
 # if __name__ == "__main__":
-#     detector = RidgeDetector(line_widths=np.arange(7,17),
-#                              low_contrast=100,
-#                              high_contrast=200,
-#                              min_len=25,
+#     detector = RidgeDetector(line_widths=np.arange(7,11),
+#                              low_contrast=50,
+#                              high_contrast=100,
+#                              min_len=15,
 #                              max_len=0,
-#                              dark_line=True,
+#                              dark_line=False,
 #                              estimate_width=True,
 #                              extend_line=True,
 #                              correct_pos=False,
 #                              )
-
-#     detector.detect_lines("../data/images/img7.png")
+#
+#     detector.detect_lines("../data/images/img2.jpg")
 #     detector.show_results()
-#     detector.save_results("../data/results/", prefix="img7")
+    # plt.imshow(detector.eigvals)
+    # plt.show()
+    # detector.save_results("../data/results/", prefix="img7")
 
 
 

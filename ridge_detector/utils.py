@@ -324,7 +324,7 @@ def convolve_gauss(image, sigma, deriv_type):
         hr, nr = compute_gauss_mask_0(sigma)
         hc, nc = compute_gauss_mask_2(sigma)
 
-    return convolve(convolve(image, hr.reshape(-1, 1)), hc.reshape(1, -1))
+    return convolve(convolve(image, hr.reshape(-1, 1), mode='nearest'), hc.reshape(1, -1), mode='nearest')
 
 
 def normalize(x, pmin=2, pmax=98, axis=None, eps=1e-20, dtype=np.float32):
