@@ -22,13 +22,15 @@ This Python implementation offers a multi-scale adaptation of the ImageJ ridge d
 
 
 ### Install via pip:
+
    ```bash
    pip install ridge-detector
    ```
 or
-    ```bash
+
+  ```bash
    pip install git+https://github.com/lxfhfut/ridge-detector.git
-   ```
+  ```
 
 ### Usage:
 ```python
