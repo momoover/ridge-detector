@@ -36,8 +36,8 @@ or
 ```python
 from ridge_detector import RidgeDetector
 det = RidgeDetector(line_width=[1, 2, 3],  # Line widths to detect
-                    low_contrast=100,  # Lower bound of intensity contrast, decrease this value if ridges are missed out
-                    high_contrast=200,  # Higher bound of intensity contrast, decrease this value if ridges are missed out
+                    low_contrast=100,  # Lower bound of intensity contrast
+                    high_contrast=200,  # Higher bound of intensity contrast
                     min_len=10, # Ignore ridges shorter than this length
                     max_len=0, # Ignore ridges longer than this length, set to 0 for no limit
                     dark_line=True, # Set to True if detecting black ridges in white background, False otherwise
