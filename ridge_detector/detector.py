@@ -8,7 +8,8 @@ from scipy.ndimage import convolve
 from ridge_detector.utils import (LinesUtil, Junction, Crossref, Line, convolve_gauss,
                    bresenham, fix_locations, interpolate_gradient_test,
                    closest_point, normalize_to_half_circle)
-
+import pandas as pd
+import numpy as np
 
 class RidgeDetector:
     def __init__(self,
@@ -789,6 +790,7 @@ class RidgeDetector:
         self.prune_contours()
 
     def save_results(self, save_dir=None, prefix="", make_binary=True, draw_junc=False, draw_width=True):
+        """Enhanced save_results function that includes detailed analysis table"""
         all_contour_points, all_width_left, all_width_right = [], [], []
         for cont in self.contours:
             num_points = cont.num
@@ -848,6 +850,93 @@ class RidgeDetector:
                     mask = ski.draw.polygon2mask((height, width), poly_points[:, [1, 0]])
                     binary_width[mask] = 0
                 iio.imwrite(os.path.join(save_dir, f"{prefix}_binary_widths.png"), binary_width)
+        
+        results = []
+        
+        for idx, cont in enumerate(self.contours):
+            length = cont.estimate_length()
+            num_points = cont.num
+            
+            points = np.column_stack((cont.row, cont.col))
+            centroid = points.mean(axis=0)
+            
+            min_y, min_x = points.min(axis=0)
+            max_y, max_x = points.max(axis=0)
+            bbox_width = max_x - min_x
+            bbox_height = max_y - min_y
+            
+            if self.estimate_width:
+                avg_width = np.mean(cont.width_l + cont.width_r)
+                std_width = np.std(cont.width_l + cont.width_r)
+                min_width = np.min(cont.width_l + cont.width_r)
+                max_width = np.max(cont.width_l + cont.width_r)
+            else:
+                avg_width = std_width = min_width = max_width = np.nan
+                
+            angle_diffs = np.diff(cont.angle)
+            mean_curvature = np.mean(np.abs(angle_diffs))
+            max_curvature = np.max(np.abs(angle_diffs))
+            
+            avg_response = np.mean(cont.response)
+            min_response = np.min(cont.response)
+            max_response = np.max(cont.response)
+            
+            junction_count = sum(1 for j in self.junctions if j.cont1 == idx or j.cont2 == idx)
+            
+            results.append({
+                'ID': idx,
+                'Contour_Class': cont.get_contour_class().name,
+                'Length': length,
+                'Num_Points': num_points,
+                'Centroid_Y': centroid[0],
+                'Centroid_X': centroid[1],
+                'Bbox_Width': bbox_width,
+                'Bbox_Height': bbox_height,
+                'Bbox_Area': bbox_width * bbox_height,
+                'Avg_Width': avg_width,
+                'Std_Width': std_width,
+                'Min_Width': min_width,
+                'Max_Width': max_width,
+                'Mean_Curvature': mean_curvature,
+                'Max_Curvature': max_curvature,
+                'Avg_Response': avg_response,
+                'Min_Response': min_response,
+                'Max_Response': max_response,
+                'Junction_Count': junction_count
+            })
+        
+        results_df = pd.DataFrame(results)
+        
+        if save_dir is not None:
+            results_df.to_csv(os.path.join(save_dir, f"{prefix}_analysis.csv"), index=False)
+        
+        self._save_visualization(save_dir, prefix, make_binary, draw_junc, draw_width)
+        
+        return results_df
+
+    def _save_visualization(self, save_dir=None, prefix="", make_binary=True, draw_junc=False, draw_width=True):
+        """Original visualization code moved to separate method"""
+        all_contour_points, all_width_left, all_width_right = [], [], []
+        for cont in self.contours:
+            num_points = cont.num
+            contour_points, width_left, width_right = [], [], []
+
+            for j in range(num_points):
+                px, py = cont.col[j], cont.row[j]
+                nx, ny = np.cos(cont.angle[j]), np.sin(cont.angle[j])
+                contour_points.append([round(px), round(py)])
+
+                if draw_width and self.estimate_width:
+                    px_r, py_r = px + cont.width_r[j] * nx, py + cont.width_r[j] * ny
+                    px_l, py_l = px - cont.width_l[j] * nx, py - cont.width_l[j] * ny
+                    width_right.append([round(px_r), round(py_r)])
+                    width_left.append([round(px_l), round(py_l)])
+
+            all_contour_points.append(np.array(contour_points))
+            if draw_width and self.estimate_width:
+                all_width_right.append(np.array(width_right))
+                all_width_left.append(np.array(width_left))
+
 
     def show_results(self):
         all_contour_points, all_width_left, all_width_right = [], [], []
