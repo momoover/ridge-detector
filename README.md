@@ -1,4 +1,4 @@
-# forked Multi-Scale Ridge Detector
+# Multi-Scale Ridge Detector
 
 ## Overview
 
