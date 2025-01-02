@@ -4,12 +4,20 @@ import imageio.v3 as iio
 import skimage as ski
 from ridge_detector.constants import *
 import matplotlib.pyplot as plt
+from matplotlib.patches import Circle
+from matplotlib.collections import PatchCollection
 from scipy.ndimage import convolve
 from ridge_detector.utils import (LinesUtil, Junction, Crossref, Line, convolve_gauss,
                    bresenham, fix_locations, interpolate_gradient_test,
                    closest_point, normalize_to_half_circle)
 import pandas as pd
 import numpy as np
+import networkx as nx
+from scipy.spatial import distance
+from scipy.stats import circmean, circstd
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+from scipy.spatial.distance import pdist, squareform
 
 class RidgeDetector:
     def __init__(self,
@@ -789,128 +797,402 @@ class RidgeDetector:
             self.compute_line_width()
         self.prune_contours()
 
-    def save_results(self, save_dir=None, prefix="", make_binary=True, draw_junc=False, draw_width=True):
-        """Enhanced save_results function that includes detailed analysis table"""
-        all_contour_points, all_width_left, all_width_right = [], [], []
-        for cont in self.contours:
-            num_points = cont.num
-            contour_points, width_left, width_right = [], [], []
+    def save_detailed_results(self, save_dir=None, prefix=""):
+        """Saves detailed point-by-point analysis of all contours"""
+        detailed_results = []
+        
+        for cont_id, cont in enumerate(self.contours):
+            for point_id in range(cont.num):
+                detailed_results.append({
+                    'Contour_ID': cont_id,
+                    'Point_ID': point_id,
+                    'X_Coord': cont.col[point_id],
+                    'Y_Coord': cont.row[point_id],
+                    'Width_Left': cont.width_l[point_id] if self.estimate_width else np.nan,
+                    'Width_Right': cont.width_r[point_id] if self.estimate_width else np.nan,
+                    'Total_Width': (cont.width_l[point_id] + cont.width_r[point_id]) if self.estimate_width else np.nan,
+                    'Angle': cont.angle[point_id],
+                    'Response': cont.response[point_id],
+                    'Intensity': cont.intensity[point_id] if cont.intensity is not None else np.nan,
+                    'Asymmetry': cont.asymmetry[point_id] if cont.asymmetry is not None else np.nan
+                })
+        
+        detailed_df = pd.DataFrame(detailed_results)
+        
+        if save_dir is not None:
+            detailed_df.to_csv(os.path.join(save_dir, f"{prefix}_detailed_analysis.csv"), index=False)
+        
+        return detailed_df
 
-            for j in range(num_points):
-                px, py = cont.col[j], cont.row[j]
-                nx, ny = np.cos(cont.angle[j]), np.sin(cont.angle[j])
-                contour_points.append([round(px), round(py)])
+    def plot_labeled_contours(self, save_dir=None, prefix=""):
+        """Creates visualization with labeled contours and crosshairs at centroids"""
+        # Convert image to grayscale if it's not already
+        if len(self.image.shape) == 3:
+            gray_img = cv2.cvtColor(self.image, cv2.COLOR_RGB2GRAY)
+        else:
+            gray_img = self.image
 
-                if draw_width and self.estimate_width:
-                    px_r, py_r = px + cont.width_r[j] * nx, py + cont.width_r[j] * ny
-                    px_l, py_l = px - cont.width_l[j] * nx, py - cont.width_l[j] * ny
+        fig, ax = plt.subplots(figsize=(12, 12))
+        ax.imshow(gray_img, cmap='gray')
+        
+        # Plot contours and their IDs
+        patches = []
+        for cont_id, cont in enumerate(self.contours):
+            # Plot contour
+            points = np.column_stack((cont.col, cont.row))
+            ax.plot(points[:, 0], points[:, 1], 'r-', linewidth=1, alpha=0.7)
+            
+            # Calculate centroid
+            centroid_x = np.mean(cont.col)
+            centroid_y = np.mean(cont.row)
+            
+            # Add crosshair
+            crosshair_size = 10
+            ax.plot([centroid_x - crosshair_size, centroid_x + crosshair_size], 
+                   [centroid_y, centroid_y], 'g-', alpha=0.7)
+            ax.plot([centroid_x, centroid_x], 
+                   [centroid_y - crosshair_size, centroid_y + crosshair_size], 'g-', alpha=0.7)
+            
+            # Add ID label
+            ax.text(centroid_x + 5, centroid_y + 5, str(cont_id), 
+                   color='yellow', fontsize=8, bbox=dict(facecolor='black', alpha=0.7))
+            
+            # Add circle at centroid for visibility
+            circle = Circle((centroid_x, centroid_y), 3)
+            patches.append(circle)
+        
+        # Add all circles at once for better performance
+        p = PatchCollection(patches, facecolor='g', alpha=0.7)
+        ax.add_collection(p)
+        
+        ax.set_title('Detected Contours with IDs')
+        plt.tight_layout()
+        
+        if save_dir is not None:
+            plt.savefig(os.path.join(save_dir, f"{prefix}_labeled_contours.png"), 
+                       dpi=300, bbox_inches='tight')
+            plt.close()
+        else:
+            plt.show()
 
-                    # if last_w_r > 0 and cont.width_r[j] > 0:
-                    width_right.append([round(px_r), round(py_r)])
-
-                    # if last_w_l > 0 and cont.width_l[j] > 0:
-                    width_left.append([round(px_l), round(py_l)])
-
-            all_contour_points.append(np.array(contour_points))
-            if draw_width and self.estimate_width:
-                all_width_right.append(np.array(width_right))
-                all_width_left.append(np.array(width_left))
-
-        if save_dir is None:
-            save_dir = os.getcwd()
-
-        result_img = self.image.copy() if self.image.ndim > 2 else np.repeat(self.image[:, :, None], 3, axis=2)
-
-        img = cv2.polylines(result_img, all_contour_points, False, (255, 0, 0))
-        iio.imwrite(os.path.join(save_dir, f"{prefix}_contours.png"), img)
-
-        if draw_width and self.estimate_width:
-            img = cv2.polylines(img, all_width_right, False, (0, 255, 0))
-            img = cv2.polylines(img, all_width_left, False, (0, 255, 0))
-            iio.imwrite(os.path.join(save_dir, f"{prefix}_contours_widths.png"), img)
-
-        if draw_junc:
+    def compute_statistical_analysis(self):
+        """Computes statistical metrics for each contour"""
+        stats_results = []
+        
+        for cont_id, cont in enumerate(self.contours):
+            points = np.column_stack((cont.row, cont.col))
+            
+            # Compute curvature along contour
+            angles = cont.angle
+            curvature = np.diff(angles)
+            curvature = np.where(curvature > np.pi, curvature - 2*np.pi, curvature)
+            curvature = np.where(curvature < -np.pi, curvature + 2*np.pi, curvature)
+            
+            # Junction analysis
+            junction_angles = []
             for junc in self.junctions:
-                img = cv2.circle(img, (round(junc.x), round(junc.y)), 2, (0, 255, 255), -1)
-            iio.imwrite(os.path.join(save_dir, f"{prefix}_contours_widths_junctions.png"), img)
+                if junc.cont1 == cont_id or junc.cont2 == cont_id:
+                    if junc.cont1 == cont_id:
+                        idx = junc.pos
+                    else:
+                        for i, point in enumerate(points):
+                            if np.allclose(point, [junc.y, junc.x]):
+                                idx = i
+                                break
+                    junction_angles.append(angles[idx])
 
-        if make_binary:
+            stats_results.append({
+                'Contour_ID': cont_id,
+                'Mean_Curvature': np.mean(np.abs(curvature)),
+                'Std_Curvature': np.std(curvature),
+                'Max_Curvature': np.max(np.abs(curvature)),
+                'Junction_Angle_Mean': circmean(junction_angles) if junction_angles else np.nan,
+                'Junction_Angle_Std': circstd(junction_angles) if junction_angles else np.nan,
+                'Point_Spacing_Mean': np.mean(np.sqrt(np.sum(np.diff(points, axis=0)**2, axis=1))),
+                'Point_Spacing_Std': np.std(np.sqrt(np.sum(np.diff(points, axis=0)**2, axis=1)))
+            })
+            
+        return pd.DataFrame(stats_results)
+
+    def compute_shape_characteristics(self):
+        """Computes shape metrics for each contour"""
+        shape_results = []
+        
+        for cont_id, cont in enumerate(self.contours):
+            points = np.column_stack((cont.row, cont.col))
+            
+            # Compute tortuosity (ratio of path length to end-to-end distance)
+            path_length = np.sum(np.sqrt(np.sum(np.diff(points, axis=0)**2, axis=1)))
+            end_to_end = np.sqrt(np.sum((points[-1] - points[0])**2))
+            tortuosity = path_length / (end_to_end + 1e-10)
+            
+            # Compute fractal dimension using box counting
+            bbox = np.array([points.min(axis=0), points.max(axis=0)])
+            box_sizes = np.logspace(0, np.log10(max(bbox[1] - bbox[0])), 20)
+            counts = []
+            for size in box_sizes:
+                boxes = np.floor(points / size)
+                counts.append(len(np.unique(boxes, axis=0)))
+            slopes = np.diff(np.log(counts)) / np.diff(np.log(box_sizes))
+            fractal_dim = -np.mean(slopes)
+            
+            # Compute shape complexity (ratio of perimeter squared to area)
+            hull_points = points[distance.ConvexHull(points).vertices]
+            hull_area = distance.Polygon(hull_points).area
+            complexity = (path_length ** 2) / (hull_area + 1e-10)
+            
+            # Compute symmetry measure
+            centroid = np.mean(points, axis=0)
+            distances = np.sqrt(np.sum((points - centroid)**2, axis=1))
+            symmetry = np.std(distances) / np.mean(distances)
+            
+            shape_results.append({
+                'Contour_ID': cont_id,
+                'Tortuosity': tortuosity,
+                'Fractal_Dimension': fractal_dim,
+                'Shape_Complexity': complexity,
+                'Symmetry_Measure': symmetry
+            })
+            
+        return pd.DataFrame(shape_results)
+
+    def compute_network_analysis(self):
+        """Computes network metrics for the contour structure"""
+        # Create graph
+        G = nx.Graph()
+        
+        # Add nodes (contours) and edges (junctions)
+        for cont_id in range(len(self.contours)):
+            G.add_node(cont_id)
+        
+        for junc in self.junctions:
+            G.add_edge(junc.cont1, junc.cont2)
+        
+        # Compute network metrics
+        network_results = {
+            'Total_Nodes': G.number_of_nodes(),
+            'Total_Edges': G.number_of_edges(),
+            'Average_Degree': np.mean([d for n, d in G.degree()]),
+            'Clustering_Coefficient': nx.average_clustering(G),
+            'Connected_Components': nx.number_connected_components(G),
+            'Average_Path_Length': nx.average_shortest_path_length(G) if nx.is_connected(G) else np.nan,
+            'Network_Diameter': nx.diameter(G) if nx.is_connected(G) else np.nan
+        }
+        
+        # Node-level metrics
+        node_metrics = []
+        for node in G.nodes():
+            node_metrics.append({
+                'Contour_ID': node,
+                'Degree': G.degree(node),
+                'Clustering': nx.clustering(G, node),
+                'Betweenness_Centrality': nx.betweenness_centrality(G)[node],
+                'Closeness_Centrality': nx.closeness_centrality(G)[node]
+            })
+            
+        return pd.DataFrame([network_results]), pd.DataFrame(node_metrics)
+
+    def create_advanced_visualizations(self, save_dir=None, prefix=""):
+        """Creates advanced interactive visualizations of the analysis results"""
+        # Create subplot figure
+        fig = make_subplots(
+            rows=2, cols=2,
+            subplot_titles=('Width Distribution Heatmap', 
+                          'Angle Distribution', 
+                          'Response Strength',
+                          'Network Graph')
+        )
+        
+        # 1. Width distribution heatmap
+        if self.estimate_width:
+            widths = []
+            positions = []
+            for cont in self.contours:
+                total_widths = cont.width_l + cont.width_r
+                positions.extend(list(range(len(total_widths))))
+                widths.extend(total_widths)
+            
+            fig.add_trace(
+                go.Heatmap(z=[widths], x=positions, colorscale='Viridis'),
+                row=1, col=1
+            )
+        
+        # 2. Angle distribution
+        all_angles = []
+        for cont in self.contours:
+            all_angles.extend(cont.angle)
+        
+        fig.add_trace(
+            go.Histogram(x=all_angles, nbinsx=36, name='Angle Distribution'),
+            row=1, col=2
+        )
+        
+        # 3. Response strength visualization
+        response_values = []
+        for cont in self.contours:
+            response_values.extend(cont.response)
+            
+        fig.add_trace(
+            go.Box(y=response_values, name='Response Distribution'),
+            row=2, col=1
+        )
+        
+        # 4. Network graph visualization
+        G = nx.Graph()
+        for cont_id in range(len(self.contours)):
+            G.add_node(cont_id)
+        for junc in self.junctions:
+            G.add_edge(junc.cont1, junc.cont2)
+            
+        pos = nx.spring_layout(G)
+        edge_x = []
+        edge_y = []
+        for edge in G.edges():
+            x0, y0 = pos[edge[0]]
+            x1, y1 = pos[edge[1]]
+            edge_x.extend([x0, x1, None])
+            edge_y.extend([y0, y1, None])
+            
+        fig.add_trace(
+            go.Scatter(x=edge_x, y=edge_y, mode='lines',
+                      line=dict(width=0.5, color='#888'),
+                      hoverinfo='none'),
+            row=2, col=2
+        )
+        
+        node_x = [pos[node][0] for node in G.nodes()]
+        node_y = [pos[node][1] for node in G.nodes()]
+        fig.add_trace(
+            go.Scatter(x=node_x, y=node_y, mode='markers',
+                      marker=dict(size=10, color='#1f77b4'),
+                      text=[f'Contour {node}' for node in G.nodes()],
+                      hoverinfo='text'),
+            row=2, col=2
+        )
+        
+        # Update layout
+        fig.update_layout(height=800, width=1000, title_text="Advanced Analysis Visualizations")
+        
+        if save_dir is not None:
+            fig.write_html(os.path.join(save_dir, f"{prefix}_advanced_visualizations.html"))
+            # Also save as static image
+            fig.write_image(os.path.join(save_dir, f"{prefix}_advanced_visualizations.png"))
+        
+        return fig
+
+    def save_results(self, save_dir=None, prefix="", make_binary=True, draw_junc=False, draw_width=True):
+    """Enhanced save_results function that includes detailed analysis table"""
+    save_dir = save_dir or os.getcwd()
+    
+        def collect_contour_data():
+            contour_data = {'points': [], 'width_left': [], 'width_right': []}
+            for cont in self.contours:
+                points, w_left, w_right = [], [], []
+                for j in range(cont.num):
+                    px, py = cont.col[j], cont.row[j]
+                    nx, ny = np.cos(cont.angle[j]), np.sin(cont.angle[j])
+                    points.append([round(px), round(py)])
+                    
+                    if draw_width and self.estimate_width:
+                        px_r, py_r = px + cont.width_r[j] * nx, py + cont.width_r[j] * ny
+                        px_l, py_l = px - cont.width_l[j] * nx, py - cont.width_l[j] * ny
+                        w_right.append([round(px_r), round(py_r)])
+                        w_left.append([round(px_l), round(py_l)])
+                        
+                contour_data['points'].append(np.array(points))
+                if draw_width and self.estimate_width:
+                    contour_data['width_right'].append(np.array(w_right))
+                    contour_data['width_left'].append(np.array(w_left))
+            return contour_data
+
+        def generate_visualizations(contour_data):
+            result_img = self.image.copy() if self.image.ndim > 2 else np.repeat(self.image[:, :, None], 3, axis=2)
+            img = cv2.polylines(result_img, contour_data['points'], False, (255, 0, 0))
+            iio.imwrite(os.path.join(save_dir, f"{prefix}_contours.png"), img)
+
+            if draw_width and self.estimate_width:
+                img = cv2.polylines(img, contour_data['width_right'], False, (0, 255, 0))
+                img = cv2.polylines(img, contour_data['width_left'], False, (0, 255, 0))
+                iio.imwrite(os.path.join(save_dir, f"{prefix}_contours_widths.png"), img)
+
+            if draw_junc:
+                for junc in self.junctions:
+                    img = cv2.circle(img, (round(junc.x), round(junc.y)), 2, (0, 255, 255), -1)
+                iio.imwrite(os.path.join(save_dir, f"{prefix}_contours_widths_junctions.png"), img)
+
+            if make_binary:
+                generate_binary_images(contour_data)
+
+        def generate_binary_images(contour_data):
             height, width = self.image.shape[:2]
             binary_contours = np.ones((height, width), dtype=np.uint8) * 255
 
-            for contour_points in all_contour_points:
+            for contour_points in contour_data['points']:
                 for points in contour_points:
                     binary_contours[min([points[1], height-1]), min([points[0], width-1])] = 0
             iio.imwrite(os.path.join(save_dir, f"{prefix}_binary_contours.png"), binary_contours)
 
             if draw_width and self.estimate_width:
                 binary_width = np.ones((height, width), dtype=np.uint8) * 255
-                for width_left, width_right in zip(all_width_left, all_width_right):
-                    poly_points = np.concatenate((width_left, width_right[::-1, :]), axis=0)
+                for w_left, w_right in zip(contour_data['width_left'], contour_data['width_right']):
+                    poly_points = np.concatenate((w_left, w_right[::-1, :]), axis=0)
                     mask = ski.draw.polygon2mask((height, width), poly_points[:, [1, 0]])
                     binary_width[mask] = 0
                 iio.imwrite(os.path.join(save_dir, f"{prefix}_binary_widths.png"), binary_width)
-        
-        results = []
-        
-        for idx, cont in enumerate(self.contours):
-            length = cont.estimate_length()
-            num_points = cont.num
-            
-            points = np.column_stack((cont.row, cont.col))
-            centroid = points.mean(axis=0)
-            
-            min_y, min_x = points.min(axis=0)
-            max_y, max_x = points.max(axis=0)
-            bbox_width = max_x - min_x
-            bbox_height = max_y - min_y
-            
-            if self.estimate_width:
-                avg_width = np.mean(cont.width_l + cont.width_r)
-                std_width = np.std(cont.width_l + cont.width_r)
-                min_width = np.min(cont.width_l + cont.width_r)
-                max_width = np.max(cont.width_l + cont.width_r)
-            else:
-                avg_width = std_width = min_width = max_width = np.nan
-                
-            angle_diffs = np.diff(cont.angle)
-            mean_curvature = np.mean(np.abs(angle_diffs))
-            max_curvature = np.max(np.abs(angle_diffs))
-            
-            avg_response = np.mean(cont.response)
-            min_response = np.min(cont.response)
-            max_response = np.max(cont.response)
-            
-            junction_count = sum(1 for j in self.junctions if j.cont1 == idx or j.cont2 == idx)
-            
-            results.append({
-                'ID': idx,
-                'Contour_Class': cont.get_contour_class().name,
-                'Length': length,
-                'Num_Points': num_points,
-                'Centroid_Y': centroid[0],
-                'Centroid_X': centroid[1],
-                'Bbox_Width': bbox_width,
-                'Bbox_Height': bbox_height,
-                'Bbox_Area': bbox_width * bbox_height,
-                'Avg_Width': avg_width,
-                'Std_Width': std_width,
-                'Min_Width': min_width,
-                'Max_Width': max_width,
-                'Mean_Curvature': mean_curvature,
-                'Max_Curvature': max_curvature,
-                'Avg_Response': avg_response,
-                'Min_Response': min_response,
-                'Max_Response': max_response,
-                'Junction_Count': junction_count
-            })
-        
-        results_df = pd.DataFrame(results)
+
+        def analyze_contours():
+            results = []
+            for idx, cont in enumerate(self.contours):
+                points = np.column_stack((cont.row, cont.col))
+                centroid = points.mean(axis=0)
+                min_coords = points.min(axis=0)
+                max_coords = points.max(axis=0)
+                bbox_dims = max_coords - min_coords
+
+                width_stats = {
+                    'avg': np.nan, 'std': np.nan, 
+                    'min': np.nan, 'max': np.nan
+                }
+                if self.estimate_width:
+                    widths = cont.width_l + cont.width_r
+                    width_stats = {
+                        'avg': np.mean(widths),
+                        'std': np.std(widths),
+                        'min': np.min(widths),
+                        'max': np.max(widths)
+                    }
+
+                angle_diffs = np.diff(cont.angle)
+                results.append({
+                    'ID': idx,
+                    'Contour_Class': cont.get_contour_class().name,
+                    'Length': cont.estimate_length(),
+                    'Num_Points': cont.num,
+                    'Centroid_Y': centroid[0],
+                    'Centroid_X': centroid[1],
+                    'Bbox_Width': bbox_dims[1],
+                    'Bbox_Height': bbox_dims[0],
+                    'Bbox_Area': bbox_dims[0] * bbox_dims[1],
+                    'Avg_Width': width_stats['avg'],
+                    'Std_Width': width_stats['std'],
+                    'Min_Width': width_stats['min'],
+                    'Max_Width': width_stats['max'],
+                    'Mean_Curvature': np.mean(np.abs(angle_diffs)),
+                    'Max_Curvature': np.max(np.abs(angle_diffs)),
+                    'Avg_Response': np.mean(cont.response),
+                    'Min_Response': np.min(cont.response),
+                    'Max_Response': np.max(cont.response),
+                    'Junction_Count': sum(1 for j in self.junctions if j.cont1 == idx or j.cont2 == idx)
+                })
+            return pd.DataFrame(results)
+
+        # Main execution
+        contour_data = collect_contour_data()
+        generate_visualizations(contour_data)
+        results_df = analyze_contours()
         
         if save_dir is not None:
             results_df.to_csv(os.path.join(save_dir, f"{prefix}_analysis.csv"), index=False)
-        
-        self._save_visualization(save_dir, prefix, make_binary, draw_junc, draw_width)
         
         return results_df
 
