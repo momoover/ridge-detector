@@ -1,23 +1,29 @@
 import os
 import cv2
-import imageio.v3 as iio
-import skimage as ski
-from ridge_detector.constants import *
+import numpy as np
+import pandas as pd
+import networkx as nx
 import matplotlib.pyplot as plt
 from matplotlib.patches import Circle
 from matplotlib.collections import PatchCollection
 from scipy.ndimage import convolve
+from scipy.stats import circmean, circstd
+from scipy.spatial import distance
+import imageio.v3 as iio
+import skimage as ski
+from plotly.subplots import make_subplots
+from scipy.spatial.distance import pdist, squareform
+import plotly.graph_objects as go
+
 from ridge_detector.utils import (LinesUtil, Junction, Crossref, Line, convolve_gauss,
                    bresenham, fix_locations, interpolate_gradient_test,
                    closest_point, normalize_to_half_circle)
-import pandas as pd
-import numpy as np
-import networkx as nx
-from scipy.spatial import distance
-from scipy.stats import circmean, circstd
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-from scipy.spatial.distance import pdist, squareform
+from ridge_detector.constants import (
+    kernel_r, kernel_c, kernel_d, kernel_rr, kernel_rc, kernel_cc,
+    cleartab, dirtab, PIXEL_BOUNDARY, MAX_ANGLE_DIFFERENCE
+)
+
+
 
 class RidgeDetector:
     def __init__(self,
@@ -1289,27 +1295,4 @@ class RidgeDetector:
             axes[1].imshow(binary_contours, cmap='gray')
             axes[1].set_title("binary contours")
             plt.show()
-
-
-# if __name__ == "__main__":
-#     detector = RidgeDetector(line_widths=np.arange(7,11),
-#                              low_contrast=50,
-#                              high_contrast=100,
-#                              min_len=15,
-#                              max_len=0,
-#                              dark_line=False,
-#                              estimate_width=True,
-#                              extend_line=True,
-#                              correct_pos=False,
-#                              )
-#
-#     detector.detect_lines("../data/images/img2.jpg")
-#     detector.show_results()
-    # plt.imshow(detector.eigvals)
-    # plt.show()
-    # detector.save_results("../data/results/", prefix="img7")
-
-
-
-
 
