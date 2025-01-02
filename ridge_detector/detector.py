@@ -8,7 +8,7 @@ from matplotlib.patches import Circle
 from matplotlib.collections import PatchCollection
 from scipy.ndimage import convolve
 from scipy.stats import circmean, circstd
-from scipy.spatial import distance
+from scipy.spatial import ConvexHull
 import imageio.v3 as iio
 import skimage as ski
 from plotly.subplots import make_subplots
@@ -943,8 +943,9 @@ class RidgeDetector:
             fractal_dim = -np.mean(slopes)
             
             # Compute shape complexity (ratio of perimeter squared to area)
-            hull_points = points[distance.ConvexHull(points).vertices]
-            hull_area = distance.Polygon(hull_points).area
+            hull = ConvexHull(points)  # points is Nx2
+            hull_points = points[hull.vertices]
+            hull_area = hull.volume    # In 2D, 'volume' returns area
             complexity = (path_length ** 2) / (hull_area + 1e-10)
             
             # Compute symmetry measure
