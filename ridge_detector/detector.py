@@ -1081,8 +1081,8 @@ class RidgeDetector:
         return fig
 
     def save_results(self, save_dir=None, prefix="", make_binary=True, draw_junc=False, draw_width=True):
-    """Enhanced save_results function that includes detailed analysis table"""
-    save_dir = save_dir or os.getcwd()
+        """Enhanced save_results function that includes detailed analysis table"""
+        save_dir = save_dir or os.getcwd()
     
         def collect_contour_data():
             contour_data = {'points': [], 'width_left': [], 'width_right': []}
