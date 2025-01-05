@@ -14,6 +14,8 @@ import skimage as ski
 from plotly.subplots import make_subplots
 from scipy.spatial.distance import pdist, squareform
 import plotly.graph_objects as go
+import base64
+from PIL import Image
 
 from ridge_detector.utils import (LinesUtil, Junction, Crossref, Line, convolve_gauss,
                    bresenham, fix_locations, interpolate_gradient_test,
@@ -853,7 +855,7 @@ class RidgeDetector:
             centroid_y = np.mean(cont.row)
             
             # Add crosshair
-            crosshair_size = 10
+            crosshair_size = 5
             ax.plot([centroid_x - crosshair_size, centroid_x + crosshair_size], 
                    [centroid_y, centroid_y], 'g-', alpha=0.7)
             ax.plot([centroid_x, centroid_x], 
@@ -861,7 +863,7 @@ class RidgeDetector:
             
             # Add ID label
             ax.text(centroid_x + 5, centroid_y + 5, str(cont_id), 
-                   color='yellow', fontsize=8, bbox=dict(facecolor='black', alpha=0.7))
+                   color='yellow', fontsize=4, bbox=dict(facecolor='black', alpha=0.5))
             
             # Add circle at centroid for visibility
             circle = Circle((centroid_x, centroid_y), 3)
@@ -999,31 +1001,76 @@ class RidgeDetector:
             
         return pd.DataFrame([network_results]), pd.DataFrame(node_metrics)
 
-    def create_advanced_visualizations(self, save_dir=None, prefix=""):
+    def create_advanced_visualizations(self, image_path, save_dir=None, prefix=""):
         """Creates advanced interactive visualizations of the analysis results"""
+
+        def add_background_image(fig, image_path, opacity=0.9):
+            # Load image
+            img = Image.open(image_path)
+            transform= 'flip_y'
+            # Apply transformations
+            if transform == 'flip_y':
+                img = img.transpose(Image.FLIP_TOP_BOTTOM)
+            elif transform == 'flip_x':
+                img = img.transpose(Image.FLIP_LEFT_RIGHT)
+            elif transform == 'flip_both':
+                img = img.transpose(Image.FLIP_TOP_BOTTOM)
+                img = img.transpose(Image.FLIP_LEFT_RIGHT)
+            elif transform == 'rotate180':
+                img = img.transpose(Image.ROTATE_180)
+            
+
+            # Get image dimensions
+            width, height = img.size
+            
+            fig.update_layout(
+                images=[dict(
+                    source=img,
+                    xref="x",
+                    yref="y",
+                    x=0,
+                    y=height,  # Start from top
+                    sizex=width,
+                    sizey=height,
+                    sizing="stretch",
+                    opacity=opacity,
+                    layer="below"
+                )],
+                # Adjust axes to match numpy/matplotlib convention
+                yaxis=dict(
+                    #autorange="reversed",  # This might help match numpy's coordinate system
+                    range=[0, height],  # Reverse y-axis
+                    scaleanchor='x',
+                    scaleratio=1,
+                ),
+                xaxis=dict(
+                    range=[0, width],
+                ),
+                autosize=True,
+                width=width,
+                height=height,
+            )          
+
         # Create subplot figure
         fig = make_subplots(
             rows=2, cols=2,
             subplot_titles=('Width Distribution Heatmap', 
                           'Angle Distribution', 
-                          'Response Strength',
+                          'contours with junctions',
                           'Network Graph')
         )
         
         # 1. Width distribution heatmap
         if self.estimate_width:
             widths = []
-            positions = []
             for cont in self.contours:
-                total_widths = cont.width_l + cont.width_r
-                positions.extend(list(range(len(total_widths))))
-                widths.extend(total_widths)
+                widths.extend(cont.width_l + cont.width_r)
             
             fig.add_trace(
-                go.Heatmap(z=[widths], x=positions, colorscale='Viridis'),
+                go.Histogram(x=widths, nbinsx=60, name='Width Distribution'),
                 row=1, col=1
             )
-        
+
         # 2. Angle distribution
         all_angles = []
         for cont in self.contours:
@@ -1034,16 +1081,134 @@ class RidgeDetector:
             row=1, col=2
         )
         
-        # 3. Response strength visualization
-        response_values = []
-        for cont in self.contours:
-            response_values.extend(cont.response)
-            
+        # 3. contours visualization
+        # Collect contour traces
+        for idx, cont in enumerate(self.contours):
+            # Plot each contour’s (x, y) as a line
+            fig.add_trace(
+                go.Scatter(
+                    x=cont.col,
+                    y=-cont.row,  # invert row if you want an upright Y-axis
+                    mode='lines+text',
+                    text=[f"ID {idx}"] + [""] * (cont.num - 1),
+                    textposition='top center',
+                    name=f'Contour_{idx}'
+                ),
+                row=2, col=1
+            )
+
+        # Collect junction points
+        junc_x = []
+        junc_y = []
+        junc_labels = []
+        for junc in self.junctions:
+            junc_x.append(junc.x)
+            junc_y.append(-junc.y)  # again invert if you want typical XY orientation
+            # Label shows which contours intersect here
+            junc_labels.append(f"J({junc.cont1}-{junc.cont2})")
+
         fig.add_trace(
-            go.Box(y=response_values, name='Response Distribution'),
+            go.Scatter(
+                x=junc_x,
+                y=junc_y,
+                mode='markers+text',
+                marker=dict(size=8, color='red'),
+                text=junc_labels,
+                textposition='top center',
+                name='Junctions'
+            ),
             row=2, col=1
         )
+
+        # --- CREATE A SEPARATE FIGURE FOR CONTOUR TRACES + JUNCTIONS ---
+        fig_lines = go.Figure()
+        add_background_image(fig_lines, image_path)
+
+        # Add each contour as a separate trace
+        for idx, cont in enumerate(self.contours):
+            fig_lines.add_trace(
+                go.Scatter(
+                    x=cont.col,
+                    y=cont.row,  # invert rows if you want typical XY orientation
+                    mode='lines+text',
+                    text=[f"ID {idx}"] + [""] * (cont.num - 1),
+                    textposition='top center',
+                    name=f'Contour_{idx}'
+                )
+            )
         
+        # Add junctions to the separate figure
+        junc_x, junc_y, junc_labels = [], [], []
+        for junc in self.junctions:
+            junc_x.append(junc.x)
+            junc_y.append(junc.y)
+            junc_labels.append(f"J({junc.cont1}-{junc.cont2})")
+        
+        fig_lines.add_trace(
+            go.Scatter(
+                x=junc_x,
+                y=junc_y,
+                mode='markers+text',
+                marker=dict(size=8, color='red'),
+                text=junc_labels,
+                textposition='top center',
+                name='Junctions'
+            )
+        )
+        
+        if self.estimate_width:
+            for idx, cont in enumerate(self.contours):
+                # Collect left and right edges along the contour
+                left_x, left_y = [], []
+                right_x, right_y = [], []
+                for j in range(cont.num):
+                    cos_val, sin_val = np.cos(cont.angle[j]), np.sin(cont.angle[j])
+                    px, py = cont.col[j], cont.row[j]
+
+                    # Left edge
+                    px_l = px - cont.width_l[j] * cos_val
+                    py_l = py - cont.width_l[j] * sin_val
+                    left_x.append(px_l)
+                    left_y.append(py_l)
+
+                    # Right edge
+                    px_r = px + cont.width_r[j] * cos_val
+                    py_r = py + cont.width_r[j] * sin_val
+                    right_x.append(px_r)
+                    right_y.append(py_r)
+
+                # Add them as lines (adapt for your coordinate system, e.g. invert y if needed)
+                fig_lines.add_trace(
+                    go.Scatter(
+                        x=left_x,
+                        y=left_y,
+                        mode='lines',
+                        line=dict(color='green'),
+                        name=f'Contour_{idx}_Left'
+                    )
+                )
+                fig_lines.add_trace(
+                    go.Scatter(
+                        x=right_x,
+                        y=right_y,
+                        mode='lines',
+                        line=dict(color='green'),
+                        name=f'Contour_{idx}_Right'
+                    )
+                )
+
+        # (Optional) Set a layout title, axes labels, etc. for this figure
+        fig_lines.update_layout(
+            title="Contour Traces with Junctions",
+            xaxis_title="X",
+            yaxis_title="Y"
+        )
+        
+        # Save as standalone HTML
+        if save_dir is not None:
+            contour_trace_html = os.path.join(save_dir, f"{prefix}_contour_traces.html")
+            fig_lines.write_html(contour_trace_html)
+
         # 4. Network graph visualization
         G = nx.Graph()
         for cont_id in range(len(self.contours)):
