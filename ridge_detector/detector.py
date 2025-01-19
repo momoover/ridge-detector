@@ -1249,6 +1249,8 @@ class RidgeDetector:
             fig.write_html(os.path.join(save_dir, f"{prefix}_advanced_visualizations.html"))
             # Also save as static image
             fig.write_image(os.path.join(save_dir, f"{prefix}_advanced_visualizations.png"))
+            # save as svg file
+            fig.write_image(os.path.join(save_dir, f"{prefix}_advanced_visualizations.svg"))
         
         return fig
 

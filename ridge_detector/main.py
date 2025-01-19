@@ -4,8 +4,8 @@ import os
 
 def main():
     # 1. Define your input image and where to save outputs
-    image_path = "screenshot_test.jpg"
-    output_dir = "test_ridge"
+    image_path = '/Users/matthiasoverberg/Desktop/smal_test.jpg'
+    output_dir = "/Users/matthiasoverberg/Desktop/test_1"
     
     # 2. Instantiate the RidgeDetector with desired parameters
     rd = RidgeDetector(low_contrast=150,  # Lower bound of intensity contrast
